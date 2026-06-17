@@ -1,0 +1,24 @@
+# Nargo / Barretenberg
+circuits/payroll/target/
+circuits/**/.nargo/
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/.env
+# Deployment artifacts: keep run-latest.json for provenance, drop the rest (noise).
+contracts/broadcast/**/dry-run/
+contracts/broadcast/**/run-[0-9]*.json
+
+# Frontend
+frontend/.next/
+frontend/node_modules/
+frontend/.env.local
+frontend/.env.production
+
+# Server-side payroll tree (runtime state, not committed)
+frontend/.payroll.json
+
+# Misc
+.DS_Store
+*.log
