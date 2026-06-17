@@ -16,3 +16,4 @@ frontend/.env.production
 # Misc
 .DS_Store
 *.log
+.vercel
