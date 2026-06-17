@@ -4,16 +4,14 @@ A minimal private payroll proof of concept for employers to distribute salaries 
 
 Built with [Noir](https://noir-lang.org) and deployed on Tempo's Moderato testnet.
 
-> **Note:** The project sets out to be a minimal proof of concept, intentionally leaving advanced
-> features out of scope (e.g. multi-input note merging in a single proof, a withdrawal relayer for
-> unlinking the payout address, fixed denominations to blunt amount-matching, time-based unlocks, etc.).
->
-> The project is not audited and is by no means production ready, do not deploy and use in production.
-
 <p align="center">
   <img src="docs/how-it-works.svg" width="820"
        alt="How Legato works: an employer deposits into a shared Asset Privacy Pool (built with Noir and Solidity, settled on Tempo Testnet); multiple employees each withdraws privately from the pool with zero-knowledge proofs.">
 </p>
+
+The project sets out to be a minimal proof of concept, intentionally leaving advanced features out of scope (e.g. multi-input note merging in a single proof, a withdrawal relayer for unlinking the payout address, fixed denominations to blunt amount-matching, time-based unlocks, etc.).
+
+> **Note:** The project is not audited and is by no means production ready, do not deploy and use in production.
 
 ## Tech stack
 
