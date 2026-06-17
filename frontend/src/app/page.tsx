@@ -113,7 +113,7 @@ function Hero() {
 
         <div className="mt-9 flex flex-col sm:flex-row gap-3">
           <Link
-            href="/admin"
+            href="/create"
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-7 py-3.5 text-sm font-semibold text-white shadow-sm transition-all active:scale-[0.98]"
           >
             Set up payroll <ArrowRight />
@@ -278,7 +278,7 @@ function CtaBand() {
         </p>
         <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
           <Link
-            href="/admin"
+            href="/create"
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-7 py-3.5 text-sm font-semibold text-white shadow-sm transition-all active:scale-[0.98]"
           >
             Set up payroll <ArrowRight />

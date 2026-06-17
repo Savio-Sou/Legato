@@ -33,7 +33,7 @@ type Phase =
   | { kind: "done"; count: number }
   | { kind: "error"; message: string };
 
-export default function AdminPage() {
+export default function CreatePage() {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const config = useConfig();
@@ -140,7 +140,6 @@ export default function AdminPage() {
         <Link href="/" aria-label="Legato home" className="transition-opacity hover:opacity-80">
           <Lockup size="text-base" />
         </Link>
-        <span className="text-sm font-medium text-neutral-500">HR Admin</span>
         <WalletBadge />
       </header>
 

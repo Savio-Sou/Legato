@@ -46,7 +46,7 @@ Legato/
     ├── public/{deposit,withdraw}.json  compiled circuit artifacts
     └── src/
         ├── app/page.tsx        landing
-        ├── app/admin/page.tsx  employer deposit flow
+        ├── app/create/page.tsx employer deposit flow
         ├── app/claim/page.tsx  employee register + withdraw flow
         └── lib/                crypto.ts, keys.ts, notes.ts, merkle.ts, noir.ts, pool.ts, contracts.ts
 ```
