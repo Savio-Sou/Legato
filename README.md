@@ -10,6 +10,11 @@ Built with [Noir](https://noir-lang.org) and deployed on Tempo's Moderato testne
 >
 > The project is not audited and is by no means production ready, do not deploy and use in production.
 
+<p align="center">
+  <img src="docs/how-it-works.svg" width="820"
+       alt="How Legato works: an employer deposits into a shared Asset Privacy Pool (built with Noir and Solidity, settled on Tempo Testnet); multiple employees each withdraws privately from the pool with zero-knowledge proofs.">
+</p>
+
 ## Tech stack
 
 | Category    | Tool                                    | Version used           | Used for                                 |
