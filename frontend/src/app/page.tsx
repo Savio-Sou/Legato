@@ -71,17 +71,6 @@ function Header() {
   return (
     <header className="relative z-10 flex items-center justify-between px-6 py-5 max-w-6xl mx-auto w-full">
       <Lockup size="text-xl" />
-      <nav className="flex items-center gap-2 sm:gap-3 text-sm">
-        <Link href="/admin" className="px-3 py-2 text-neutral-600 hover:text-neutral-900 transition-colors">
-          HR Admin
-        </Link>
-        <Link
-          href="/claim"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-medium text-white transition-colors"
-        >
-          Claim salary
-        </Link>
-      </nav>
     </header>
   );
 }
