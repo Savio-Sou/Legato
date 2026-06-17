@@ -5,6 +5,13 @@
   --color-foreground: #171717;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Display face for wordmark + hero headlines → `font-display` utility. */
+  --font-display: var(--font-fraunces);
+
+  /* Dark "stage" tones for a dramatic demo-day hero → bg-stage / text-stage. */
+  --color-stage: #08120d;
+  --color-stage-2: #0b1f17;
 }
 
 html {
@@ -26,4 +33,100 @@ body {
 
 ::selection {
   background-color: rgba(16, 185, 129, 0.18);
+}
+
+/* --- Brand motion (CSS/SVG only; degrades under reduced-motion) ----------- */
+@keyframes legato-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes legato-float {
+  0%,
+  100% {
+    transform: translate(-50%, 0);
+  }
+  50% {
+    transform: translate(-50%, -10px);
+  }
+}
+
+/* Self-drawing line: pathLength="1" makes this geometry-agnostic. */
+.legato-draw-path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: legato-draw 1.8s ease-out 0.2s forwards;
+}
+.legato-float {
+  animation: legato-float 7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .legato-draw-path {
+    stroke-dashoffset: 0;
+    animation: none;
+  }
+  .legato-float {
+    animation: none;
+  }
+  .flow-dot {
+    display: none;
+  }
+  .reveal {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --- Accessibility: visible keyboard focus -------------------------------- */
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid #10b981;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* --- Scroll reveal: progressive enhancement -------------------------------
+   Sections are fully visible by default; they animate in on scroll only where
+   scroll-driven animations are supported and motion is not reduced. */
+@keyframes legato-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .reveal {
+      animation: legato-reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 55%;
+    }
+  }
+}
+
+/* --- Dropdown / popover entrance ------------------------------------------ */
+@keyframes legato-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.animate-pop {
+  transform-origin: top right;
+  animation: legato-pop 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-pop {
+    animation: none;
+  }
 }

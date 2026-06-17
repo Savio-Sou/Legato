@@ -2,30 +2,32 @@
 pragma solidity ^0.8.21;
 
 import "forge-std/Script.sol";
-import "../src/PayrollManager.sol";
-import "../src/UltraVerifier.sol";
+import {ShieldedPool} from "../src/ShieldedPool.sol";
+// Both generated verifiers declare `contract HonkVerifier` plus identically-named helper libraries,
+// so they are imported under module aliases to keep their symbols from colliding.
+import "../src/DepositVerifier.sol" as DepositV;
+import "../src/WithdrawVerifier.sol" as WithdrawV;
 
 // pathUSD on Tempo Moderato testnet
 address constant PATH_USD = 0x20C0000000000000000000000000000000000000;
+uint32 constant TREE_LEVELS = 16;
 
+/// Deploys the deposit + withdraw verifiers and the ShieldedPool. The PoseidonT3 library the pool's
+/// Merkle tree uses is auto-deployed and linked by forge during broadcast.
 contract Deploy is Script {
     function run() external {
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");
-        // Reuse an existing verifier when VERIFIER_ADDRESS is set (it is unchanged
-        // by the permissionless refactor); otherwise deploy a fresh one.
-        address existingVerifier = vm.envOr("VERIFIER_ADDRESS", address(0));
 
         vm.startBroadcast(deployerKey);
 
-        address verifierAddr = existingVerifier;
-        if (verifierAddr == address(0)) {
-            verifierAddr = address(new HonkVerifier());
-        }
-        PayrollManager payrollManager = new PayrollManager(verifierAddr, PATH_USD);
+        address depositVerifier = address(new DepositV.HonkVerifier());
+        address withdrawVerifier = address(new WithdrawV.HonkVerifier());
+        ShieldedPool pool = new ShieldedPool(depositVerifier, withdrawVerifier, PATH_USD, TREE_LEVELS);
 
         vm.stopBroadcast();
 
-        console.log("HonkVerifier:   ", verifierAddr);
-        console.log("PayrollManager: ", address(payrollManager));
+        console.log("DepositVerifier: ", depositVerifier);
+        console.log("WithdrawVerifier:", withdrawVerifier);
+        console.log("ShieldedPool:    ", address(pool));
     }
 }
