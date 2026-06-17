@@ -102,9 +102,33 @@ export default function ClaimPage() {
   });
   const registered = keyData?.[3] as boolean | undefined;
 
+  // A wallet change (connect / disconnect / switch account) must discard every
+  // bit of state tied to the previous account. Otherwise the old wallet's
+  // scanned notes linger on screen and the auto-scan effect below never
+  // re-fires — it only runs from the "idle" phase, and a stale "ready" phase
+  // keeps it from ever scanning the new account until a manual page refresh.
+  // Resetting during render (React's "adjust state when a value changes"
+  // pattern) wipes the stale state before the auto-scan effect runs.
+  const [account, setAccount] = useState(address);
+  if (account !== address) {
+    setAccount(address);
+    setKey(null);
+    setPhase({ kind: "idle" });
+    setAmountInput("");
+  }
+
+  // Load (or, for passkeys, create) the connected account's shielded key.
   useEffect(() => {
-    if (isConnected && address) getShieldedKey(address).then(setKey);
-    else setKey(null);
+    if (!isConnected || !address) return;
+    // Guard against a slow key derivation from a previous account resolving
+    // after we've already switched — it must not clobber the new account's key.
+    let cancelled = false;
+    getShieldedKey(address).then((k) => {
+      if (!cancelled) setKey(k);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [isConnected, address]);
 
   const doScan = useCallback(async () => {
@@ -208,7 +232,6 @@ export default function ClaimPage() {
         <Link href="/" aria-label="Legato home" className="transition-opacity hover:opacity-80">
           <Lockup size="text-base" />
         </Link>
-        <span className="text-sm font-medium text-neutral-500">Claim salary</span>
         <WalletBadge />
       </header>
 
@@ -216,8 +239,7 @@ export default function ClaimPage() {
         <div>
           <h1 className="text-3xl font-display font-semibold tracking-tight text-neutral-900">Claim your salary</h1>
           <p className="text-sm text-neutral-600 mt-1.5 leading-relaxed">
-            Your browser scans the shielded pool, decrypts your notes, and proves ownership to withdraw —
-            without revealing which deposit funded you. Withdraw any amount; the rest stays shielded.
+            Your browser scans the pool, decrypts your assets, and proves ownership to withdraw locally.
           </p>
         </div>
 
@@ -239,8 +261,7 @@ export default function ClaimPage() {
               <div className="rounded-xl border border-neutral-200 bg-white p-5 space-y-3 shadow-sm">
                 <p className="text-sm font-semibold text-neutral-900">Register your shielded key</p>
                 <p className="text-sm text-neutral-600 leading-relaxed">
-                  Publish your shielded key once so your employer can pay you privately. Then share your
-                  wallet address with them.
+                  Publish your shielded key once for employers to pay you privately.
                 </p>
                 <button
                   onClick={handleRegister}

@@ -95,7 +95,7 @@ function Hero() {
       <div className="flex-1 flex flex-col items-center justify-center text-center px-6 pb-20">
         <div className="inline-flex items-center gap-2 rounded-full border border-emerald-600/30 bg-emerald-500/10 px-4 py-1.5 text-sm font-medium text-emerald-700 tracking-wide">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          Powered by Noir + Tempo testnet
+          Powered by Noir + Tempo
         </div>
 
         <h1 className="mt-6 font-display font-semibold tracking-tight leading-[1.02] text-5xl sm:text-6xl md:text-7xl max-w-4xl text-neutral-900">
@@ -108,7 +108,7 @@ function Hero() {
         <p className="mt-6 text-lg text-neutral-600 max-w-xl leading-relaxed">
           Employees receive their salary without revealing the amount to anyone on-chain — verified
           by a zero-knowledge proof, paid in{" "}
-          <span className="text-neutral-900 font-medium">pathUSD</span> on Tempo.
+          <span className="text-neutral-900 font-medium">pathUSD</span> on Tempo Testnet.
         </p>
 
         <div className="mt-9 flex flex-col sm:flex-row gap-3">

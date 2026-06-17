@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAccount, useConfig, usePublicClient, useWriteContract } from "wagmi";
 import { waitForTransactionReceipt } from "wagmi/actions";
@@ -42,8 +42,67 @@ export default function CreatePage() {
   const [rows, setRows] = useState<EmployeeRow[]>([{ ...EMPTY_ROW }]);
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
 
+  // Per-address shielded-key registration status, keyed by lowercased address.
+  // Populated lazily as valid addresses are typed; cached so each address is checked once.
+  type RegStatus = "checking" | "registered" | "unregistered";
+  const [regStatus, setRegStatus] = useState<Record<string, RegStatus>>({});
+  // Addresses whose check has already been kicked off — keeps the effect from
+  // re-firing for them without putting `regStatus` in the dependency array.
+  const checkedRef = useRef<Set<string>>(new Set());
+
+  // Origin the site is served from, e.g. "https://legato.example.com" — set
+  // client-side to avoid a hydration mismatch, then woven into the registration prompt.
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
+
+  useEffect(() => {
+    if (!publicClient) return;
+    const pending = [
+      ...new Set(
+        rows
+          .map((r) => r.address.trim().toLowerCase())
+          .filter((a) => ADDRESS_RE.test(a) && !checkedRef.current.has(a)),
+      ),
+    ];
+    if (pending.length === 0) return;
+
+    for (const a of pending) checkedRef.current.add(a);
+    setRegStatus((s) => {
+      const next = { ...s };
+      for (const a of pending) next[a] = "checking";
+      return next;
+    });
+
+    for (const a of pending) {
+      getRegisteredKey(publicClient, a)
+        .then((key) => {
+          setRegStatus((s) => ({ ...s, [a]: key ? "registered" : "unregistered" }));
+        })
+        .catch(() => {
+          // Network/read error — drop from caches so it retries on a later render.
+          checkedRef.current.delete(a);
+          setRegStatus((s) => {
+            const next = { ...s };
+            delete next[a];
+            return next;
+          });
+        });
+    }
+  }, [rows, publicClient]);
+
   const busy =
     phase.kind === "checking" || phase.kind === "approving" || phase.kind === "depositing";
+
+  // Every row must carry a valid, registered address and a positive salary, with no
+  // duplicate addresses — otherwise the submit button stays disabled.
+  const addresses = rows.map((r) => r.address.trim().toLowerCase());
+  const formValid =
+    rows.length > 0 &&
+    new Set(addresses).size === rows.length &&
+    rows.every((r, i) => {
+      const a = addresses[i];
+      return ADDRESS_RE.test(a) && regStatus[a] === "registered" && Number(r.salaryUsd) > 0;
+    });
 
   function addRow() {
     if (rows.length < 5) setRows((r) => [...r, { ...EMPTY_ROW }]);
@@ -151,40 +210,56 @@ export default function CreatePage() {
             are visible, but <span className="font-medium">who they belong to never appears on-chain</span> —
             employees withdraw later, unlinked to this payroll.
           </p>
-          <p className="text-xs text-neutral-500 mt-2 leading-relaxed">
-            Employees must open <span className="font-mono">/claim</span> and register a shielded key first,
-            then share their address with you.
-          </p>
         </div>
 
         <div className="space-y-3">
-          {rows.map((row, i) => (
-            <div key={i} className="flex gap-2.5 items-center">
-              <input
-                placeholder="Employee address (0x…)"
-                value={row.address}
-                onChange={(e) => updateRow(i, "address", e.target.value)}
-                className="flex-1 rounded-lg border border-neutral-300 bg-white px-3.5 py-2.5 text-sm font-mono text-neutral-900 placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none transition-all"
-              />
-              <input
-                placeholder="Salary (USD)"
-                type="number"
-                min="0"
-                value={row.salaryUsd}
-                onChange={(e) => updateRow(i, "salaryUsd", e.target.value)}
-                className="w-36 rounded-lg border border-neutral-300 bg-white px-3.5 py-2.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none transition-all"
-              />
-              {rows.length > 1 && (
-                <button
-                  onClick={() => removeRow(i)}
-                  className="w-9 h-9 rounded-md border border-neutral-300 bg-white hover:border-red-400 hover:bg-red-50 hover:text-red-600 text-neutral-400 flex items-center justify-center text-lg leading-none transition-all flex-shrink-0"
-                  aria-label="Remove"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          ))}
+          {rows.map((row, i) => {
+            const normalized = row.address.trim().toLowerCase();
+            const status = ADDRESS_RE.test(normalized) ? regStatus[normalized] : undefined;
+            return (
+              <div key={i} className="space-y-1.5">
+                <div className="flex gap-2.5 items-center">
+                  <input
+                    placeholder="Employee address (0x…)"
+                    value={row.address}
+                    onChange={(e) => updateRow(i, "address", e.target.value)}
+                    className="flex-1 rounded-lg border border-neutral-300 bg-white px-3.5 py-2.5 text-sm font-mono text-neutral-900 placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none transition-all"
+                  />
+                  <input
+                    placeholder="Salary (USD)"
+                    type="number"
+                    min="0"
+                    value={row.salaryUsd}
+                    onChange={(e) => updateRow(i, "salaryUsd", e.target.value)}
+                    className="w-36 rounded-lg border border-neutral-300 bg-white px-3.5 py-2.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none transition-all"
+                  />
+                  {rows.length > 1 && (
+                    <button
+                      onClick={() => removeRow(i)}
+                      className="w-9 h-9 rounded-md border border-neutral-300 bg-white hover:border-red-400 hover:bg-red-50 hover:text-red-600 text-neutral-400 flex items-center justify-center text-lg leading-none transition-all flex-shrink-0"
+                      aria-label="Remove"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+                {status === "unregistered" && (
+                  <p className="flex items-start gap-1.5 text-xs text-amber-700 leading-relaxed">
+                    <svg className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                    </svg>
+                    <span>
+                      No shielded key registered for this address yet. Invite the employee to first
+                      register on <span className="font-mono">{origin}/claim</span>.
+                    </span>
+                  </p>
+                )}
+                {status === "checking" && (
+                  <p className="text-xs text-neutral-400 leading-relaxed">Checking shielded-key registration…</p>
+                )}
+              </div>
+            );
+          })}
           {rows.length < 5 && (
             <button onClick={addRow} className="text-sm font-medium text-emerald-700 hover:text-emerald-800 transition-colors">
               + Add employee
@@ -200,14 +275,13 @@ export default function CreatePage() {
               </svg>
               <span>
                 Connect a passkey wallet to fund payroll — use{" "}
-                <span className="font-medium text-neutral-900">Connect wallet</span> in the top-right. The
-                pool is shared and permissionless.
+                <span className="font-medium text-neutral-900">Connect wallet</span> in the top-right.
               </span>
             </div>
           ) : (
             <button
               onClick={handleDeposit}
-              disabled={busy}
+              disabled={busy || !formValid}
               className="w-full rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-neutral-200 disabled:text-neutral-400 disabled:cursor-not-allowed px-6 py-3.5 text-sm font-semibold text-white shadow-sm disabled:shadow-none transition-all active:scale-[0.99] disabled:active:scale-100"
             >
               {phase.kind === "checking"
@@ -218,7 +292,7 @@ export default function CreatePage() {
                 ? `Depositing ${phase.index + 1} of ${phase.total}…`
                 : phase.kind === "done"
                 ? "Deposit again"
-                : "Fund payroll into the pool"}
+                : "Create and fund payroll"}
             </button>
           )}
 
