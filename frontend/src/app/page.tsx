@@ -307,7 +307,15 @@ function Footer() {
         <Wordmark size="text-xl" />
         <div className="flex items-center gap-4">
           <p className="text-xs text-neutral-500 text-center sm:text-right">
-            ZK private payroll on Tempo testnet · Built with Noir.
+            Built with Noir and ❤️ by{" "}
+            <a
+              href="https://x.com/savio_sou"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-neutral-700"
+            >
+              Savio
+            </a>
           </p>
           <a
             href="https://github.com/Savio-Sou/Legato"
