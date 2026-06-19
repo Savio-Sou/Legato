@@ -17,6 +17,9 @@ import { scanForNotes, selectNotes, type OwnedNote } from "@/lib/pool";
 import { encryptNote } from "@/lib/notes";
 import { WalletBadge } from "@/components/wallet";
 import { Lockup, Slur } from "@/components/brand";
+import { ErrorCard } from "@/components/error-card";
+import { friendlyError, plainError, type FriendlyError } from "@/lib/errors";
+import { withAutoFunding } from "@/lib/faucet";
 import { SHIELDED_POOL_ADDRESS, SHIELDED_POOL_ABI, PATH_USD_DECIMALS } from "@/lib/contracts";
 
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as const;
@@ -25,13 +28,14 @@ const sum = (notes: OwnedNote[]) => notes.reduce((s, n) => s + n.value, 0n);
 
 type Phase =
   | { kind: "idle" }
+  | { kind: "funding" }
   | { kind: "registering" }
   | { kind: "scanning" }
   | { kind: "ready"; notes: OwnedNote[]; total: bigint }
   | { kind: "no_note" }
   | { kind: "withdrawing"; total: bigint; step: number; steps: number; status: ProofStatus | null }
   | { kind: "withdrawn"; amount: bigint }
-  | { kind: "error"; message: string };
+  | { kind: "error"; error: FriendlyError };
 
 const PROOF_SLUR = "M14 46C92 8 232 8 310 46";
 
@@ -141,7 +145,7 @@ export default function ClaimPage() {
       setAmountInput(formatUnits(total, DP));
       setPhase({ kind: "ready", notes, total });
     } catch (e) {
-      setPhase({ kind: "error", message: "Scan failed: " + msg(e) });
+      setPhase({ kind: "error", error: friendlyError(e, "Scan failed") });
     }
   }, [publicClient, key]);
 
@@ -150,35 +154,45 @@ export default function ClaimPage() {
   }, [key, registered, phase.kind, doScan]);
 
   async function handleRegister() {
-    if (!key) return;
+    if (!key || !address || !publicClient) return;
     setPhase({ kind: "registering" });
     try {
       const [pk, ex, ey] = registryArgs(key);
-      const hash = await writeContractAsync({
-        address: SHIELDED_POOL_ADDRESS,
-        abi: SHIELDED_POOL_ABI,
-        functionName: "registerKey",
-        args: [pk, ex, ey],
-      });
-      await waitForTransactionReceipt(config, { hash });
+      // Fresh passkey wallets have no gas. If the signed tx fails for that,
+      // auto-fund from the faucet and retry instead of dead-ending on gas.
+      await withAutoFunding(
+        async () => {
+          const hash = await writeContractAsync({
+            address: SHIELDED_POOL_ADDRESS,
+            abi: SHIELDED_POOL_ABI,
+            functionName: "registerKey",
+            args: [pk, ex, ey],
+          });
+          await waitForTransactionReceipt(config, { hash });
+        },
+        { client: publicClient, address, onFunding: () => setPhase({ kind: "funding" }) },
+      );
       await refetchKey();
       setPhase({ kind: "idle" });
     } catch (e) {
-      setPhase({ kind: "error", message: "Registration failed: " + msg(e) });
+      setPhase({ kind: "error", error: friendlyError(e, "Registration failed") });
     }
   }
 
   // Withdraw `amountInput` across as many notes as needed (the circuit spends one note per proof).
   async function handleWithdraw(notes: OwnedNote[], total: bigint) {
-    if (!key || !address) return;
+    if (!key || !address || !publicClient) return;
     let amount: bigint;
     try {
       amount = parseUnits(amountInput || "0", DP);
     } catch {
-      return setPhase({ kind: "error", message: "Invalid amount" });
+      return setPhase({ kind: "error", error: plainError("Invalid amount", "Enter a valid number.") });
     }
     if (amount <= 0n || amount > total) {
-      return setPhase({ kind: "error", message: `Enter an amount between 0 and ${formatUnits(total, DP)}` });
+      return setPhase({
+        kind: "error",
+        error: plainError("Amount out of range", `Enter an amount between 0 and ${formatUnits(total, DP)}.`),
+      });
     }
 
     const picked = selectNotes(notes, amount);
@@ -203,13 +217,19 @@ export default function ClaimPage() {
         }
 
         setPhase({ kind: "withdrawing", total, step, steps, status: null }); // submitting
-        const hash = await writeContractAsync({
-          address: SHIELDED_POOL_ADDRESS,
-          abi: SHIELDED_POOL_ABI,
-          functionName: "withdraw",
-          args: [wp.proof, wp.publicInputs, enc.ephPubkey, enc.ciphertext, enc.tag],
-        });
-        await waitForTransactionReceipt(config, { hash });
+        // Wrap only the submit so an auto-funded retry re-signs, not re-proves.
+        await withAutoFunding(
+          async () => {
+            const hash = await writeContractAsync({
+              address: SHIELDED_POOL_ADDRESS,
+              abi: SHIELDED_POOL_ABI,
+              functionName: "withdraw",
+              args: [wp.proof, wp.publicInputs, enc.ephPubkey, enc.ciphertext, enc.tag],
+            });
+            await waitForTransactionReceipt(config, { hash });
+          },
+          { client: publicClient, address, onFunding: () => setPhase({ kind: "funding" }) },
+        );
 
         remaining -= payout;
         withdrawn += payout;
@@ -219,7 +239,7 @@ export default function ClaimPage() {
       if (process.env.NEXT_PUBLIC_DEV_PRIVATE_KEY) {
         (window as unknown as Record<string, unknown>).__claimError = { message: msg(e) };
       }
-      setPhase({ kind: "error", message: "Withdraw failed: " + msg(e) });
+      setPhase({ kind: "error", error: friendlyError(e, "Withdraw failed") });
     }
   }
 
@@ -257,7 +277,7 @@ export default function ClaimPage() {
 
         {isConnected && (
           <div className="space-y-5">
-            {registered === false && phase.kind !== "registering" && (
+            {registered === false && phase.kind !== "registering" && phase.kind !== "funding" && (
               <div className="rounded-xl border border-neutral-200 bg-white p-5 space-y-3 shadow-sm">
                 <p className="text-sm font-semibold text-neutral-900">Register your shielded key</p>
                 <p className="text-sm text-neutral-600 leading-relaxed">
@@ -272,6 +292,7 @@ export default function ClaimPage() {
               </div>
             )}
 
+            {phase.kind === "funding" && <Info text="Topping up your wallet with testnet funds…" />}
             {phase.kind === "registering" && <Info text="Registering your shielded key on-chain…" />}
             {phase.kind === "scanning" && <Info text="Scanning the pool for your notes…" />}
 
@@ -358,12 +379,7 @@ export default function ClaimPage() {
             )}
 
             {phase.kind === "error" && (
-              <div className="rounded-xl border border-red-500/30 bg-red-50 p-5 space-y-3">
-                <p className="text-sm text-red-700 leading-relaxed">{phase.message}</p>
-                <button onClick={() => setPhase({ kind: "idle" })} className="text-xs text-neutral-500 hover:text-neutral-700">
-                  ← Try again
-                </button>
-              </div>
+              <ErrorCard error={phase.error} onRetry={() => setPhase({ kind: "idle" })} />
             )}
           </div>
         )}

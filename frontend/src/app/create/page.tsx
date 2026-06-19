@@ -7,6 +7,9 @@ import { waitForTransactionReceipt } from "wagmi/actions";
 import { parseUnits } from "viem";
 import { WalletBadge } from "@/components/wallet";
 import { Lockup } from "@/components/brand";
+import { ErrorCard } from "@/components/error-card";
+import { friendlyError, plainError, type FriendlyError } from "@/lib/errors";
+import { withAutoFunding } from "@/lib/faucet";
 import {
   SHIELDED_POOL_ADDRESS,
   SHIELDED_POOL_ABI,
@@ -28,10 +31,11 @@ const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/i;
 type Phase =
   | { kind: "idle" }
   | { kind: "checking" }
+  | { kind: "funding" }
   | { kind: "approving" }
   | { kind: "depositing"; index: number; total: number; label: string }
   | { kind: "done"; count: number }
-  | { kind: "error"; message: string };
+  | { kind: "error"; error: FriendlyError };
 
 export default function CreatePage() {
   const { address, isConnected } = useAccount();
@@ -91,7 +95,10 @@ export default function CreatePage() {
   }, [rows, publicClient]);
 
   const busy =
-    phase.kind === "checking" || phase.kind === "approving" || phase.kind === "depositing";
+    phase.kind === "checking" ||
+    phase.kind === "funding" ||
+    phase.kind === "approving" ||
+    phase.kind === "depositing";
 
   // Every row must carry a valid, registered address and a positive salary, with no
   // duplicate addresses — otherwise the submit button stays disabled.
@@ -119,17 +126,18 @@ export default function CreatePage() {
 
     const filled = rows.filter((r) => r.address && r.salaryUsd);
     if (filled.length === 0) {
-      setPhase({ kind: "error", message: "Add at least one employee with an address and salary." });
+      setPhase({ kind: "error", error: plainError("Nothing to fund", "Add at least one employee with an address and salary.") });
       return;
     }
     const seen = new Set<string>();
     for (const r of filled) {
       if (!ADDRESS_RE.test(r.address))
-        return setPhase({ kind: "error", message: `Invalid address: ${r.address}` });
+        return setPhase({ kind: "error", error: plainError("Invalid address", `${r.address} isn't a valid 0x address.`) });
       if (Number(r.salaryUsd) <= 0)
-        return setPhase({ kind: "error", message: `Salary must be > 0 for ${r.address.slice(0, 8)}…` });
+        return setPhase({ kind: "error", error: plainError("Invalid salary", `Salary must be greater than 0 for ${r.address.slice(0, 8)}….`) });
       const low = r.address.toLowerCase();
-      if (seen.has(low)) return setPhase({ kind: "error", message: `Duplicate address: ${r.address.slice(0, 8)}…` });
+      if (seen.has(low))
+        return setPhase({ kind: "error", error: plainError("Duplicate address", `${r.address.slice(0, 8)}… appears more than once.`) });
       seen.add(low);
     }
 
@@ -145,27 +153,35 @@ export default function CreatePage() {
     if (unregistered.length > 0) {
       setPhase({
         kind: "error",
-        message:
-          "These employees haven't registered a shielded key yet (they must open /claim and register first): " +
-          unregistered.map((a) => a.slice(0, 8) + "…").join(", "),
+        error: plainError(
+          "Employees not registered yet",
+          "These addresses must open /claim and register a shielded key first: " +
+            unregistered.map((a) => a.slice(0, 8) + "…").join(", "),
+        ),
       });
       return;
     }
 
     const total = employees.reduce((s, e) => s + e.salary, 0n);
 
-    // 2) Approve the pool to pull the total pathUSD.
+    // 2) Approve the pool to pull the total pathUSD. This is the first signed
+    // tx, so if the wallet has no gas it auto-funds here and retries.
     setPhase({ kind: "approving" });
     try {
-      const hash = await writeContractAsync({
-        address: PATH_USD_ADDRESS,
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [SHIELDED_POOL_ADDRESS, total],
-      });
-      await waitForTransactionReceipt(config, { hash });
+      await withAutoFunding(
+        async () => {
+          const hash = await writeContractAsync({
+            address: PATH_USD_ADDRESS,
+            abi: ERC20_ABI,
+            functionName: "approve",
+            args: [SHIELDED_POOL_ADDRESS, total],
+          });
+          await waitForTransactionReceipt(config, { hash });
+        },
+        { client: publicClient, address, onFunding: () => setPhase({ kind: "funding" }) },
+      );
     } catch (e) {
-      return setPhase({ kind: "error", message: "Approval failed: " + msg(e) });
+      return setPhase({ kind: "error", error: friendlyError(e, "Approval failed") });
     }
 
     // 3) One encrypted deposit per employee (each binds value↔commitment via a deposit proof).
@@ -178,15 +194,20 @@ export default function CreatePage() {
         const enc = await encryptNote(e.encPub, e.salary, blinding);
 
         setPhase({ kind: "depositing", index: i, total: employees.length, label: "Submitting deposit…" });
-        const hash = await writeContractAsync({
-          address: SHIELDED_POOL_ADDRESS,
-          abi: SHIELDED_POOL_ABI,
-          functionName: "deposit",
-          args: [dep.proof, dep.publicInputs, enc.ephPubkey, enc.ciphertext, enc.tag],
-        });
-        await waitForTransactionReceipt(config, { hash });
+        await withAutoFunding(
+          async () => {
+            const hash = await writeContractAsync({
+              address: SHIELDED_POOL_ADDRESS,
+              abi: SHIELDED_POOL_ABI,
+              functionName: "deposit",
+              args: [dep.proof, dep.publicInputs, enc.ephPubkey, enc.ciphertext, enc.tag],
+            });
+            await waitForTransactionReceipt(config, { hash });
+          },
+          { client: publicClient, address, onFunding: () => setPhase({ kind: "funding" }) },
+        );
       } catch (err) {
-        return setPhase({ kind: "error", message: `Deposit for ${e.address.slice(0, 8)}… failed: ` + msg(err) });
+        return setPhase({ kind: "error", error: friendlyError(err, `Deposit for ${e.address.slice(0, 8)}… failed`) });
       }
     }
 
@@ -286,6 +307,8 @@ export default function CreatePage() {
             >
               {phase.kind === "checking"
                 ? "Checking employee keys…"
+                : phase.kind === "funding"
+                ? "Topping up testnet funds…"
                 : phase.kind === "approving"
                 ? "Approve pathUSD in your wallet…"
                 : phase.kind === "depositing"
@@ -303,12 +326,7 @@ export default function CreatePage() {
           )}
 
           {phase.kind === "error" && (
-            <div className="rounded-lg border border-red-500/30 bg-red-50 px-4 py-3 text-sm text-red-700 space-y-2">
-              <p className="leading-relaxed">{phase.message}</p>
-              <button onClick={() => setPhase({ kind: "idle" })} className="text-xs text-neutral-500 hover:text-neutral-700">
-                ← Try again
-              </button>
-            </div>
+            <ErrorCard error={phase.error} onRetry={() => setPhase({ kind: "idle" })} />
           )}
 
           {phase.kind === "done" && (
@@ -327,8 +345,4 @@ export default function CreatePage() {
       </main>
     </div>
   );
-}
-
-function msg(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
 }

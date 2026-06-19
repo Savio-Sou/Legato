@@ -29,15 +29,30 @@ export interface OwnedNote {
   proof: MerkleProof;
 }
 
+// Moderato caps eth_getLogs at a 100k-block range, so the deploy→head window
+// (which only grows over time) must be fetched in chunks and concatenated.
+const MAX_BLOCK_RANGE = 100_000n;
+
 /** All inserted commitments (deposits + change notes), ordered by leaf index. */
 export async function fetchCommitments(client: PublicClient): Promise<OnChainNote[]> {
-  const logs = await client.getContractEvents({
-    address: SHIELDED_POOL_ADDRESS,
-    abi: SHIELDED_POOL_ABI,
-    eventName: "NewCommitment",
-    fromBlock: POOL_DEPLOY_BLOCK,
-    toBlock: "latest",
-  });
+  const latest = await client.getBlockNumber();
+  const ranges: { from: bigint; to: bigint }[] = [];
+  for (let from = POOL_DEPLOY_BLOCK; from <= latest; from += MAX_BLOCK_RANGE) {
+    const to = from + MAX_BLOCK_RANGE - 1n;
+    ranges.push({ from, to: to < latest ? to : latest });
+  }
+  const chunks = await Promise.all(
+    ranges.map(({ from, to }) =>
+      client.getContractEvents({
+        address: SHIELDED_POOL_ADDRESS,
+        abi: SHIELDED_POOL_ABI,
+        eventName: "NewCommitment",
+        fromBlock: from,
+        toBlock: to,
+      }),
+    ),
+  );
+  const logs = chunks.flat();
   const notes = logs.map((l) => {
     const a = l.args as {
       commitment: `0x${string}`;
