@@ -332,12 +332,17 @@ export default function CreatePage() {
           {phase.kind === "done" && (
             <div className="rounded-lg border border-emerald-600/20 bg-emerald-500/5 p-4 space-y-2">
               <p className="text-sm font-medium text-emerald-700">
-                {phase.count} encrypted {phase.count === 1 ? "note" : "notes"} deposited into the pool ✓
+                {phase.count} encrypted {phase.count === 1 ? "note" : "notes"} deposited into the pool
               </p>
               <p className="text-sm text-neutral-600 leading-relaxed">
-                Tell your employees to open <span className="font-mono">/claim</span> and withdraw —
-                their browser scans the pool, decrypts their note, and proves ownership to withdraw any
-                amount. No claim link needed; the pool is shared.
+                Your employees can now claim their salaries on{" "}
+                <a
+                  href="/claim"
+                  className="font-mono text-emerald-700 underline underline-offset-2 hover:text-emerald-800"
+                >
+                  {typeof window !== "undefined" ? window.location.origin : ""}/claim
+                </a>
+                .
               </p>
             </div>
           )}
