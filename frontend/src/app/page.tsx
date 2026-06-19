@@ -286,13 +286,13 @@ function CtaBand() {
             href="/create"
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-7 py-3.5 text-sm font-semibold text-white shadow-sm transition-all active:scale-[0.98]"
           >
-            Set up payroll <ArrowRight />
+            Create payroll <ArrowRight />
           </Link>
           <Link
             href="/claim"
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-neutral-300 bg-white hover:border-neutral-400 hover:bg-neutral-50 px-7 py-3.5 text-sm font-semibold text-neutral-700 hover:text-neutral-900 transition-all active:scale-[0.98]"
           >
-            Claim your salary <ArrowRight />
+            Claim salary <ArrowRight />
           </Link>
         </div>
       </div>
